@@ -13,17 +13,20 @@ def main():
 
     df = pd.read_csv(args.processed_csv)
 
+    # exclude those index are not numbers
+    df = df[pd.to_numeric(df['index'], errors='coerce').notna()]
+
     # 1) Formation energy vs Js (Js on x, Eform on y)
     plt.figure()
     plt.scatter(
         df["Js"], df["Eform"],
         facecolors='none', edgecolors='blue', linewidths=0.8
     )
-    plt.axvline(1.0, color="grey", linestyle="--", label="Js = 1 T")
-    plt.axhline(0.0, color="grey", linestyle="--", label="Eform = 0")
-    plt.xlabel("Js (T)")
-    plt.ylabel("Formation Energy per atom (eV)")
-    plt.title("Eform vs Js")
+    plt.axvline(1.0, color="grey", linestyle="--", label=r"$J_\mathrm{s}$ = 1 T")
+    plt.axhline(0.0, color="grey", linestyle="--", label=r"$E_\mathrm{form}$ = 0")
+    plt.xlabel(r"$J_\mathrm{s}$ (T)")
+    plt.ylabel("Formation energy (eV/atom)")
+    plt.title(r"$E_\mathrm{form}$ vs $J_\mathrm{s}$")
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
@@ -37,11 +40,11 @@ def main():
         df["Js"], df["Ehull"],
         facecolors='none', edgecolors='green', linewidths=0.8
     )
-    plt.axvline(1.0, color="grey", linestyle="--", label="Js = 1 T")
-    plt.axhline(0.1, color="grey", linestyle="--", label="Ehull = 0.1 eV/at")
-    plt.xlabel("Js (T)")
+    plt.axvline(1.0, color="grey", linestyle="--", label=r"$J_\mathrm{s}$ = 1 T")
+    plt.axhline(0.1, color="grey", linestyle="--", label=r"$E_\mathrm{hull}$ = 0.1 eV/atom")
+    plt.xlabel(r"$J_\mathrm{s}$ (T)")
     plt.ylabel("Energy above hull (eV/atom)")
-    plt.title("Ehull vs Js")
+    plt.title(r"$E_\mathrm{hull}$ vs $J_\mathrm{s}$")
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
@@ -56,11 +59,11 @@ def main():
         facecolors='none', edgecolors='green', linewidths=0.8
     )
     plt.ylim(0, 2.0)
-    plt.axvline(1.0, color="grey", linestyle="--", label="Js = 1 T")
-    plt.axhline(0.1, color="grey", linestyle="--", label="Ehull = 0.1 eV/at")
-    plt.xlabel("Js (T)")
+    plt.axvline(1.0, color="grey", linestyle="--", label=r"$J_\mathrm{s}$ = 1 T")
+    plt.axhline(0.1, color="grey", linestyle="--", label=r"$E_\mathrm{hull}$ = 0.1 eV/atom")
+    plt.xlabel(r"$J_\mathrm{s}$ (T)")
     plt.ylabel("Energy above hull (eV/atom)")
-    plt.title("Ehull vs Js (y ≤ 2 eV/at)")
+    plt.title(r"$E_\mathrm{hull}$ vs $J_\mathrm{s}$ (y ≤ 2 eV/atom)")
     plt.legend()
     plt.grid(True)
     plt.tight_layout()

@@ -47,7 +47,9 @@ def formula_from_counts(nFe: int, nCo: int, nS: int) -> str:
     for el, n in (("Fe", nFe), ("Co", nCo), ("S", nS)):
         if n <= 0:
             continue
-        parts.append(f"{el}{'' if n==1 else n}")
+        parts.append(el)
+        if n > 1:
+            parts.append(r"$_{" + f"{n}" + r"}$")
     return "".join(parts) if parts else "—"
 
 def fractions_from_counts(nFe: int, nCo: int, nS: int) -> Tuple[float, float, float]:
@@ -63,16 +65,86 @@ def barycentric_to_xy(fFe: float, fCo: float, fS: float) -> Tuple[float, float]:
     y = h*fFe
     return x, y
 
-def seg_distance(px, py, x1, y1, x2, y2) -> float:
-    """Distance from point (px,py) to segment [(x1,y1),(x2,y2)]."""
-    vx, vy = x2-x1, y2-y1
-    wx, wy = px-x1, py-y1
-    vv = vx*vx + vy*vy
-    if vv == 0.0:
-        return math.hypot(px-x1, py-y1)
-    t = max(0.0, min(1.0, (wx*vx + wy*vy)/vv))
-    projx, projy = x1 + t*vx, y1 + t*vy
-    return math.hypot(px-projx, py-projy)
+def is_segment_intersect(line1, line2, tol=1e-6):
+    """
+    line1: ((x1, y1), (x2, y2))
+    line2: ((x3, y3), (x4, y4))
+    """
+    (x1, y1), (x2, y2) = line1
+    (x3, y3), (x4, y4) = line2
+
+    # --- 1. Bounding Box Check ---
+    if max(x1, x2) < min(x3, x4) - tol or \
+       max(x3, x4) < min(x1, x2) - tol or \
+       max(y1, y2) < min(y3, y4) - tol or \
+       max(y3, y4) < min(y1, y2) - tol:
+        return False
+
+    # --- 2. Straddle Test ---
+    def cross_sign(xa, ya, xb, yb, xc, yc):
+        val = (xb - xa) * (yc - ya) - (yb - ya) * (xc - xa)
+        if val > tol:
+            return 1
+        if val < -tol:
+            return -1
+        return 0
+    s1 = cross_sign(x1, y1, x2, y2, x3, y3)
+    s2 = cross_sign(x1, y1, x2, y2, x4, y4)
+    s3 = cross_sign(x3, y3, x4, y4, x1, y1)
+    s4 = cross_sign(x3, y3, x4, y4, x2, y2)
+    if (s1 * s2 <= 0) and (s3 * s4 <= 0):
+        return True
+
+    return False
+
+def is_line_box_intersect(line, box, edge_clearance, tol=1e-6):
+    """
+    line: ((lx1, ly1), (lx2, ly2))
+    box:  (x0, y0, x1, y1)
+    """
+    (lx1, ly1), (lx2, ly2) = line
+    bx0, by0, bx1, by1 = box
+
+    bx0 -= edge_clearance
+    by0 -= edge_clearance
+    bx1 += edge_clearance
+    by1 += edge_clearance
+
+    # --- 1. Endpoint Inclusion Test ---
+    def is_inside(x, y):
+        return (bx0 - tol <= x <= bx1 + tol) and \
+               (by0 - tol <= y <= by1 + tol)
+    if is_inside(lx1, ly1) or is_inside(lx2, ly2):
+        return True
+
+    # --- 2. Diagonal Intersection Test ---
+    diag1 = ((bx0, by0), (bx1, by1))
+    diag2 = ((bx0, by1), (bx1, by0))
+    if is_segment_intersect(line, diag1, tol) or \
+       is_segment_intersect(line, diag2, tol):
+        return True
+
+    return False
+
+def is_box_intersect(box1, box2, edge_clearance, tol=1e-6):
+    """
+    box1: (ax0, ay0, ax1, ay1)
+    box2: (bx0, by0, bx1, by1)
+    """
+    (ax0, ay0, ax1, ay1) = box1
+    (bx0, by0, bx1, by1) = box2
+
+    # --- Separating Axis Theorem ---
+    if ax1 < bx0 - edge_clearance - tol:
+        return False
+    if ax0 > bx1 + edge_clearance + tol:
+        return False
+    if ay1 < by0 - edge_clearance - tol:
+        return False
+    if ay0 > by1 + edge_clearance + tol:
+        return False
+
+    return True
 
 def triangle_vertices():
     h = math.sqrt(3)/2.0
@@ -120,8 +192,8 @@ def sort_and_connect(points, ax, **kwargs):
     return segs
 
 def choose_label_position(x, y, taken_boxes, text, ax, renderer, avoid_lines, edge_clearance=0.022):
-    r_list = [0.02, 0.03, 0.04, 0.05]
-    angles = np.linspace(0, 2*np.pi, 16, endpoint=False)
+    r_list = np.arange(0.02, 0.07, 0.005)
+    angles = np.linspace(0, 2*np.pi, 48, endpoint=False)
     def get_text_bbox(xp, yp):
         t = ax.text(xp, yp, text, fontsize=8, ha="center", va="center", color="black",
                     bbox=dict(facecolor="white", alpha=0.85, edgecolor="none", pad=0.2),
@@ -136,18 +208,13 @@ def choose_label_position(x, y, taken_boxes, text, ax, renderer, avoid_lines, ed
         for ang in angles:
             dx, dy = r*math.cos(ang), r*math.sin(ang)
             xp, yp = x+dx, y+dy
-            if avoid_lines:
-                dmin = min(seg_distance(xp, yp, x1, y1, x2, y2) for ((x1,y1),(x2,y2)) in avoid_lines)
-                if dmin < edge_clearance:
-                    continue
-            x0, y0, x1, y1 = get_text_bbox(xp, yp)
-            ok = True
-            for (X0, Y0, X1, Y1) in taken_boxes:
-                if not (x1 < X0 or X1 < x0 or y1 < Y0 or Y1 < y0):
-                    ok = False; break
-            if ok:
-                return xp, yp
-    return x+0.03, y+0.03
+            current_box = get_text_bbox(xp, yp)
+            if any(is_box_intersect(current_box, tb, edge_clearance) for tb in taken_boxes):
+                continue
+            if any(is_line_box_intersect(line, current_box, edge_clearance) for line in avoid_lines):
+                continue
+            return xp, yp
+    return x, y+0.03
 
 
 # ----------------------------- lower-hull (tie-lines) -----------------------------
@@ -273,7 +340,7 @@ def main():
                         c=js, s=28, cmap='rainbow', vmin=args.js_min, vmax=args.js_max,
                         edgecolors='none', zorder=2)
         cbar = plt.colorbar(sc, ax=ax, fraction=0.046, pad=0.04)
-        cbar.set_label("J_s")
+        cbar.set_label(r"$J_\mathrm{s}$ (T)")
 
     # Stable points (bigger, with white edge so they pop)
     if len(stable_pts):
@@ -310,7 +377,9 @@ def main():
         placed: List[Tuple[float,float,float,float]] = []
         avoid_lines = triangle_edges + binary_segments + ternary_segments + grid_segments
         for (x, y, text, _, _, _) in stable_pts:
-            xp, yp = choose_label_position(x, y, placed, text, ax, renderer, avoid_lines, edge_clearance=0.022)
+            if text in ["Fe", "Co", "S"]:
+                continue
+            xp, yp = choose_label_position(x, y, placed, text, ax, renderer, avoid_lines, edge_clearance=0.01)
             t = ax.text(xp, yp, text, fontsize=8, ha="center", va="center", color="black",
                         bbox=dict(facecolor="white", alpha=0.85, edgecolor="none", pad=0.2), zorder=5)
             fig.canvas.draw()
